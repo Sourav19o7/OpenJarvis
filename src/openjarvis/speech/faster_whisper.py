@@ -24,7 +24,7 @@ class FasterWhisperBackend(SpeechBackend):
         self,
         model_size: str = "base",
         device: str = "auto",
-        compute_type: str = "float16",
+        compute_type: str = "int8",
     ) -> None:
         self._model_size = model_size
         self._device = device

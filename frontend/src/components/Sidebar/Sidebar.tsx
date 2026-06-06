@@ -17,6 +17,7 @@ import {
   Loader2,
   ScrollText,
   Database,
+  Mic,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
@@ -54,6 +55,7 @@ export function Sidebar() {
 
   const navItems = [
     { path: '/', icon: MessageSquare, label: 'Chat' },
+    { path: '/jarvis', icon: Mic, label: 'J.A.R.V.I.S.', accent: true },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
     { path: '/agents', icon: Bot, label: 'Agents' },
@@ -195,21 +197,38 @@ export function Sidebar() {
           <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
+              const isAccent = 'accent' in item && item.accent;
               return (
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
                   style={{
-                    background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
-                    color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
-                    fontWeight: isActive ? 500 : 400,
+                    background: isActive
+                      ? 'var(--color-accent-subtle)'
+                      : isAccent
+                        ? 'rgba(34, 211, 238, 0.08)'
+                        : 'transparent',
+                    color: isActive
+                      ? 'var(--color-text)'
+                      : isAccent
+                        ? '#22d3ee'
+                        : 'var(--color-text-secondary)',
+                    fontWeight: isActive || isAccent ? 500 : 400,
                   }}
                   onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'var(--color-bg-secondary)';
+                    if (!isActive) {
+                      e.currentTarget.style.background = isAccent
+                        ? 'rgba(34, 211, 238, 0.15)'
+                        : 'var(--color-bg-secondary)';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.background = 'transparent';
+                    if (!isActive) {
+                      e.currentTarget.style.background = isAccent
+                        ? 'rgba(34, 211, 238, 0.08)'
+                        : 'transparent';
+                    }
                   }}
                 >
                   {isActive && (
@@ -222,7 +241,10 @@ export function Sidebar() {
                       }}
                     />
                   )}
-                  <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
+                  <item.icon
+                    size={16}
+                    style={isActive || isAccent ? { color: '#22d3ee' } : undefined}
+                  />
                   {item.label}
                 </button>
               );
