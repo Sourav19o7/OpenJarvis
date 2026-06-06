@@ -74,16 +74,22 @@ def run_slack_daemon(
 
     processing = threading.Event()
 
-    @app.event("message")
-    def handle_dm(event: dict, say: Any) -> None:
+    def _handle_message(event: dict, say: Any, event_type: str) -> None:
+        """Common handler for DMs and @mentions."""
         text = event.get("text", "")
         if not text:
             return
 
-        ts = event.get("ts", "")
-        logger.info("Slack DM: %s", text[:60])
+        # Remove bot mention from text (e.g., "<@U123ABC> hello" -> "hello")
+        text = re.sub(r"<@[A-Z0-9]+>\s*", "", text).strip()
+        if not text:
+            return
 
-        say(text="Message received! Working on it now...", thread_ts=ts)
+        ts = event.get("ts", "")
+        channel = event.get("channel", "")
+        logger.info("Slack %s: %s", event_type, text[:60])
+
+        say(text="Message received! Working on it now...", thread_ts=ts, channel=channel)
         processing.set()
 
         # Progress updater
@@ -98,6 +104,7 @@ def run_slack_daemon(
                     say(
                         text="Still working! Will reply ASAP",
                         thread_ts=ts,
+                        channel=channel,
                     )
 
         pt = threading.Thread(target=_progress, daemon=True)
@@ -113,8 +120,16 @@ def run_slack_daemon(
             processing.clear()
             stop.set()
 
-        say(text=reply, thread_ts=ts)
-        logger.info("Slack DM reply sent (%d chars)", len(reply))
+        say(text=reply, thread_ts=ts, channel=channel)
+        logger.info("Slack %s reply sent (%d chars)", event_type, len(reply))
+
+    @app.event("message")
+    def handle_dm(event: dict, say: Any) -> None:
+        _handle_message(event, say, "DM")
+
+    @app.event("app_mention")
+    def handle_mention(event: dict, say: Any) -> None:
+        _handle_message(event, say, "mention")
 
     handler = SocketModeHandler(app, app_token)
 
