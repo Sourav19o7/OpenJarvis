@@ -763,19 +763,26 @@ async def transcribe_speech(request: Request):
         raise HTTPException(status_code=400, detail="Missing 'file' field")
 
     audio_bytes = await audio_file.read()
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
     language = form.get("language")
 
     # Detect format from filename
     filename = getattr(audio_file, "filename", "audio.wav")
     ext = filename.rsplit(".", 1)[-1] if "." in filename else "wav"
 
-    result = backend.transcribe(audio_bytes, format=ext, language=language or None)
-    return {
-        "text": result.text,
-        "language": result.language,
-        "confidence": result.confidence,
-        "duration_seconds": result.duration_seconds,
-    }
+    try:
+        result = backend.transcribe(audio_bytes, format=ext, language=language or None)
+        return {
+            "text": result.text,
+            "language": result.language,
+            "confidence": result.confidence,
+            "duration_seconds": result.duration_seconds,
+        }
+    except Exception as exc:
+        logger.error("Transcription failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
 
 
 @speech_router.get("/health")
@@ -788,6 +795,65 @@ async def speech_health(request: Request):
         "available": backend.health(),
         "backend": backend.backend_id,
     }
+
+
+class SynthesizeRequest(BaseModel):
+    text: str
+    voice: Optional[str] = None
+
+
+@speech_router.post("/synthesize")
+async def synthesize_speech(req: SynthesizeRequest, request: Request):
+    """Synthesize text to speech audio.
+
+    Returns audio bytes in MP3 format for playback in the browser.
+    Uses Cartesia TTS if available, falling back to other backends.
+    """
+    from starlette.responses import Response
+
+    # Try to get TTS backend
+    tts_backend = getattr(request.app.state, "tts_backend", None)
+
+    # If no TTS backend configured, try to create one on the fly
+    if tts_backend is None:
+        try:
+            from openjarvis.core.registry import TTSRegistry
+
+            # Try Cartesia first (Jarvis-like voice)
+            if "cartesia" in TTSRegistry.keys():
+                tts_cls = TTSRegistry.get("cartesia")
+                tts_backend = tts_cls()
+            elif "openai" in TTSRegistry.keys():
+                tts_cls = TTSRegistry.get("openai")
+                tts_backend = tts_cls()
+            elif "kokoro" in TTSRegistry.keys():
+                tts_cls = TTSRegistry.get("kokoro")
+                tts_backend = tts_cls()
+        except Exception as exc:
+            logger.warning("Failed to create TTS backend: %s", exc)
+
+    if tts_backend is None:
+        raise HTTPException(status_code=501, detail="TTS backend not available")
+
+    if not tts_backend.health():
+        raise HTTPException(status_code=503, detail="TTS backend not healthy (check API key)")
+
+    try:
+        result = tts_backend.synthesize(
+            req.text,
+            output_format="mp3",
+        )
+        return Response(
+            content=result.audio,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline",
+                "Cache-Control": "no-cache",
+            },
+        )
+    except Exception as exc:
+        logger.error("TTS synthesis failed: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ---- Feedback routes ----
